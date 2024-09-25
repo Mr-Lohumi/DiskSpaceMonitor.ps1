@@ -1,0 +1,82 @@
+<#
+.SYNOPSIS
+    This PowerShell script monitors disk space on multiple servers or workstations 
+    and sends email alerts when free space falls below a specified threshold.
+    
+.DESCRIPTION
+    The script uses the Win32_LogicalDisk class to retrieve information about disk drives 
+    on each specified server. It compares the available free space against a user-defined 
+    threshold and sends email notifications if the free space is below the limit. 
+    
+    The script supports secure SMTP with a custom port and uses SSL for secure email communication.
+
+.PARAMETER servers
+    A list of server or workstation names to check for disk space.
+    
+.PARAMETER threshold
+    The minimum free disk space (in GB) before an alert is triggered.
+    
+.PARAMETER smtpServer
+    The SMTP server used to send the email alerts.
+
+.PARAMETER smtpPort
+    The port used to connect to the SMTP server (default is 587).
+
+.PARAMETER smtpCredential
+    Credentials for authenticating with the SMTP server.
+
+.EXAMPLE
+    .\DiskSpaceMonitor.ps1
+
+    This command will check the disk space of the servers defined in the script and send an 
+    email alert if any of the drives have less than the defined threshold of free space.
+
+.NOTES
+    Author: Mr. Lohumi
+    Version: 1.0
+    License: MIT License
+#>
+
+# Define the list of servers to check
+$servers = @("Server1", "Server2", "Server3")
+
+# Set the free space threshold in GB
+$threshold = 20
+
+# Email settings
+$smtpServer = "smtp.domain.com"
+$smtpPort = 587 # Specify your SMTP port (common ports: 25, 465, 587)
+$from = "monitor@domain.com"
+$to = "admin@domain.com"
+$subject = "Disk Space Alert"
+$smtpCredential = Get-Credential # Prompt for credentials to authenticate with the SMTP server
+
+# Loop through each server and check the disk space
+foreach ($server in $servers) {
+    try {
+        # Get the logical disks on the server
+        $drives = Get-WmiObject -Class Win32_LogicalDisk -ComputerName $server -Filter "DriveType=3"
+
+        foreach ($drive in $drives) {
+            $freeSpaceGB = [math]::Round($drive.FreeSpace / 1GB, 2)
+            $totalSpaceGB = [math]::Round($drive.Size / 1GB, 2)
+            $driveLetter = $drive.DeviceID
+
+            # Check if free space is below the threshold
+            if ($freeSpaceGB -lt $threshold) {
+                $message = "Warning: $server - Drive $driveLetter has only $freeSpaceGB GB free out of $totalSpaceGB GB."
+
+                # Send an email alert
+                Send-MailMessage -SmtpServer $smtpServer -Port $smtpPort -Credential $smtpCredential -UseSsl `
+                                  -From $from -To $to -Subject $subject -Body $message
+                Write-Host $message -ForegroundColor Red
+            }
+            else {
+                Write-Host "$server - Drive $driveLetter has $freeSpaceGB GB free out of $totalSpaceGB GB." -ForegroundColor Green
+            }
+        }
+    }
+    catch {
+        Write-Host "Failed to retrieve disk space information for $server. Error: $_" -ForegroundColor Yellow
+    }
+}
